@@ -1,188 +1,153 @@
 ---
 name: skill-router
-description: Route freeform user intent to the best matching installed skill. Discovers, matches, and loads skills across all agent platforms.
+description: Scan, discover, and route user intent to the best matching installed skill. Dynamic routing from your actual skills — no hardcoded rules.
 ---
 
 # Skill Router
 
-Route user prompts to the right skill — automatically. If no installed skill
-matches, search the community skill ecosystem and install on demand.
+Route any user request to the right skill. The router doesn't guess what
+skills you *might* have — it scans what you *actually* have and matches
+against those.
 
 Works across Claude Code, WorkBuddy, OpenCode, Gemini CLI, Codex, OpenClaw,
 Cursor, and any platform that uses `SKILL.md`.
 
 ## When to use
 
-- User says something that sounds like a specific task but doesn't name a skill.
-- User doesn't know which skill to use for what they want.
-- User wants to do something and you're not sure an installed skill exists for it.
-- User mentions a task that spans multiple skills (e.g., "write and review a paper").
+- User says something ambiguous — you're not sure which skill to use.
+- User doesn't know what skills are available.
+- User wants to do something that might span multiple skills.
+- User mentions a task and you want to check if a relevant skill exists.
 
 **Do NOT use** when the user explicitly names a skill (`/skill-name` or `@skill`).
 
-## How routing works
+## How the router works
 
-Read the routing rules below. For each rule, the format is:
+The router has three phases. Always execute them in order.
 
-`user prompt keywords → action`
+### Phase 1: Scan — discover all available skills
 
-Actions are:
-- `load:<skill-name>` — Load that skill and follow its instructions.
-- `pipeline:<skill-a> → <skill-b>` — Load skill A first, pass its output to skill B.
-- `parallel:<skill-a> || <skill-b>` — Load both independently, merge results.
-- `compose:<skill-a> + <skill-b>` — Load both, use them together on the same task.
-- `ask` — Ask the user clarifying questions to narrow down.
-- `search:<query>` — Run `npx skills find "<query>"` and present results.
+Read every skill directory you can find. For each skill, read its `SKILL.md`
+and extract three things: **name**, **description**, and **triggers** (from
+the YAML frontmatter).
 
----
+Check these locations in order of priority:
 
-## Global routing table
+| Priority | Level | Paths to scan |
+|----------|-------|---------------|
+| 1st | **Project** | `.claude/skills/*/SKILL.md`, `.workbuddy/skills/*/SKILL.md`, `.opencode/skills/*/SKILL.md`, `.gemini/skills/*/SKILL.md`, `.codex/skills/*/SKILL.md`, `.openclaw/skills/*/SKILL.md`, `.cursor/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md` |
+| 2nd | **User** | `~/.claude/skills/*/SKILL.md`, `~/.workbuddy/skills/*/SKILL.md`, `~/.config/opencode/skills/*/SKILL.md`, `~/.gemini/skills/*/SKILL.md`, `~/.codex/skills/*/SKILL.md`, `~/.openclaw/skills/*/SKILL.md`, `~/.agents/skills/*/SKILL.md` |
 
-### Writing & documentation
+**Deduplication rule**: If the same skill name exists at both project and user
+level, prefer the project-level one (it's more context-specific).
 
-| When user says... | Route to |
-|------------------|----------|
-| `write`, `documentation`, `docs`, `README`, `changelog` | `load:content-ops` or `load:copywriting` |
-| `commit`, `commit message`, `提交` | `load:ai-git-best-practices` |
-| `review my work`, `QA`, `quality check` | `load:content-ops` |
-| `remove AI slop`, `humanize`, `去AI味` | `load:humanizer` |
-| `copy`, `copywriting`, `marketing copy`, `广告文案` | `load:copywriting` |
+Build a table like this in your working memory:
 
-### Research & learning
+```
+Available skills:
+├── paper-reading    — Read and summarize academic papers. Triggers: paper, 论文, research
+├── git-commit-writer — Write conventional commit messages. Triggers: commit, 提交, git
+├── code-reviewer    — Review code for bugs and style issues. Triggers: review, 审查, lint
+└── ...
+```
 
-| When user says... | Route to |
-|------------------|----------|
-| `paper`, `论文`, `research`, `文献`, `arxiv` | `load:arxiv-reader` |
-| `tutorial`, `learn`, `teach me`, `讲解`, `介绍` | `compose:open-lesson + peekaboo` |
-| `explain`, `what is`, `how does`, `原理` | Use your general knowledge first, then suggest relevant skills |
+### Phase 2: Match — find the best skill for the user's intent
 
-### Code & development
+Compare the user's request against every skill's **name**, **description**,
+and **triggers** field.
 
-| When user says... | Route to |
-|------------------|----------|
-| `code review`, `review code`, `审查代码` | `load:oracle` |
-| `debug`, `debugging`, `bug`, `fix`, `错误` | `load:gsd-debug` |
-| `refactor`, `重构`, `优化代码` | `load:oracle` |
-| `git`, `rebase`, `squash`, `merge` | `load:ai-git-best-practices` |
-| `MCP`, `mcp server`, `tool` | `load:mcp-builder` |
-| `CLI`, `command line`, `命令行工具` | `load:cli-anything-hub` |
+**Matching rules** (use your judgment — you understand semantics, not just
+keywords):
 
-### Design & creative
+1. **Exact trigger match** → High confidence. User says "论文", skill has
+   `triggers: [论文]`. Immediately load that skill.
 
-| When user says... | Route to |
-|------------------|----------|
-| `design`, `UI`, `UX`, `visual`, `frontend` | `load:canvas-design` or `load:awesome-design-md` |
-| `image`, `图片`, `生成图片` | `load:多模态内容生成` |
-| `video`, `视频`, `生成视频` | `load:多模态内容生成` |
-| `3D`, `3d model`, `模型` | `load:多模态内容生成` |
+2. **Semantic match** → Medium confidence. User says "帮我理一下参考文献的
+   逻辑", no exact trigger, but `paper-reading`'s description matches.
+   Present this option to the user.
 
-### Data & analysis
+3. **Broad match** → Low confidence. User says "写点东西" and multiple
+   writing-related skills exist. Show them as options.
 
-| When user says... | Route to |
-|------------------|----------|
-| `excel`, `spreadsheet`, `xlsx`, `csv`, `表格` | `load:xlsx` |
-| `word`, `docx`, `文档`, `报告` | `load:docx` |
-| `ppt`, `powerpoint`, `slides`, `演示`, `slides` | `load:pptx` |
-| `pdf` | `load:pdf` or `load:pdfkit-py` |
+4. **No match** → Fallback to network search (Phase 3).
 
-### Workflow & productivity
+### Phase 3: Fallback — search community skills
 
-| When user says... | Route to |
-|------------------|----------|
-| `plan`, `project`, `milestone`, `roadmap`, `规划` | `load:gsd-new-project` or `load:gsd-progress` |
-| `task`, `todo`, `待办`, `任务` | `load:gsd-check-todos` |
-| `automation`, `schedule`, `cron`, `定时`, `自动` | `load:automation-workflows` |
-| `goal`, `goals`, `目标`, `track`, `追踪` | `load:goal-tracker` |
+If no installed skill matches:
 
-### Content operations
+1. Run: `npx skills find "<describe the user's need in 5-10 English words>"`
+2. Read the results. Select the most relevant ones.
+3. Present up to 3 options to the user:
+   - Show the skill name, description, and install command.
+   - Ask: "Would you like to install one of these?"
+4. If they say yes: `npx skills add <owner/repo@skill> -g -y`
+5. After install, the skill is immediately available.
 
-| When user says... | Route to |
-|------------------|----------|
-| `social media`, `linkedin`, `twitter`, `小红书` | `load:social-content` or `load:xiaohongshu` |
-| `email`, `newsletter`, `邮件` | `load:email-sequence` |
-| `blog`, `post`, `article`, `文章` | `load:content-ops` |
-| `SEO`, `search engine`, `搜索优化` | `load:seo-audit` or `load:programmatic-seo` |
-
-### System & platform
-
-| When user says... | Route to |
-|------------------|----------|
-| `web search`, `search`, `查找`, `搜索` | `load:web-scraper` or `load:multi-search-engine` |
-| `browser`, `网页`, `website`, `截图` | `load:agent-browser` |
-| `github`, `pr`, `issue`, `pull request` | `load:github` |
-| `security`, `安全`, `scan`, `vulnerability` | `load:skill-scanner` |
+> **Note**: If `npx` is not available, fall back to suggesting the user
+> search manually at https://skills.sh or https://github.com/topics/agent-skills.
 
 ---
 
-## Multi-skill patterns
+## Multi-skill routing
 
-These prompts span multiple skills. Route them as a unit.
+Some requests need multiple skills. Detect and handle these patterns:
 
-| When user says... | Route |
-|------------------|-------|
-| `write and publish` | `pipeline:copywriting → social-content` |
-| `research then write` | `pipeline:arxiv-reader → content-ops` |
-| `design and build` | `pipeline:awesome-design-md → canvas-design` |
-| `review and fix` | `pipeline:oracle → gsd-debug` |
-| `read and summarize` | `pipeline:arxiv-reader → content-ops` |
-| `write and review` | `pipeline:copywriting → content-ops` |
-| `analyze and visualize` | `pipeline:xlsx → canvas-design` |
-| `查 GitHub 趋势和新闻` | `parallel:github-trending-cn || multi-search-engine` |
-| `写论文综述` | `pipeline:arxiv-reader → content-ops` |
+| Pattern | What it means | When to use |
+|---------|---------------|-------------|
+| **Pipeline** | Skill A's output feeds into Skill B | "Read this paper and write a summary" — need to read first, then write |
+| **Parallel** | Skills A and B are independent | "Check GitHub trends and search for AI news" — both independent |
+| **Compose** | Both skills contribute to the same output | "Design and build a landing page" — design + development together |
 
----
+**How to detect**: Read the user's request. If it implies a sequence of steps,
+those steps can map to different skills. Ask yourself: "Does this request have
+multiple phases that different skills could handle?"
 
-## Platform-aware skill discovery
+**When you detect multi-skill needs**:
 
-When you need to find a skill, check these locations in order:
-
-1. **Project-level** — `.claude/skills/<name>/SKILL.md` or `.workbuddy/skills/<name>/SKILL.md`
-2. **User-level** — `~/.claude/skills/<name>/SKILL.md` or `~/.workbuddy/skills/<name>/SKILL.md`
-3. **Universal** — `~/.agents/skills/<name>/SKILL.md`
-4. **Other platforms** — `~/.config/opencode/skills/`, `~/.gemini/skills/`, `.cursor/skills/`, etc.
-
-**Precedence:** Project-level skills override user-level skills with the same name.
-
----
-
-## Fallback: network search
-
-If no installed skill matches the user's intent:
-
-1. Run: `npx skills find "<describe what the user wants in 5-10 English words>"`
-2. Read the results. Present up to 3 options to the user.
-3. If the user wants to install one: `npx skills add <owner/repo@skill> -g -y`
-4. After installation, the skill is available for future routing.
-
----
-
-## Self-maintenance
-
-This routing table is meant to grow. When you discover a new routing pattern:
-
-1. **Add a new row** to the appropriate table in this file.
-2. Use the user's exact keywords so the pattern is clear.
-3. If the skill comes from a new platform, add it to the discovery paths.
-4. Commit the update if you have write access to the skill file.
-
-When you encounter a prompt that clearly needs multiple skills:
-
-1. **Add a new row** to the multi-skill patterns table.
-2. Specify the relationship: `pipeline`, `parallel`, or `compose`.
+1. List the skills involved.
+2. Propose the orchestration to the user: "I'll use skill A to read the paper,
+   then skill B to write the summary. Sound good?"
+3. Execute one skill at a time, passing context between them.
 
 ---
 
 ## Interaction rules
 
-- **When multiple skills match at similar strength**: Show the user the options
-  and ask which they prefer. Example: "I can review your code with oracle (for
-  architecture review) or gsd-debug (for bug hunting). Which would you like?"
+**Single clear match** → Load immediately. Don't ask.
+```
+User: "帮我查一下这篇论文"
+→ Matches paper-reading (trigger: 论文). Load it.
+```
 
-- **When a single skill clearly matches**: Load it immediately. Don't ask.
+**Multiple matches** → Show options, let user pick.
+```
+User: "帮我 review 一下代码"
+→ code-reviewer (triggers: review) and oracle (description: architecture analysis)
+→ "I have two skills for this: code-reviewer (code quality) and oracle
+   (architecture review). Which would you like?"
+```
 
-- **When you loaded a skill and it wasn't the right one**: Unload it, tell the
-  user "that wasn't quite right", and either try another match or ask for
-  clarification.
+**Ambiguous intent** → Ask clarifying questions.
+```
+User: "帮我把这个改一下"
+→ Too vague. Ask: "What kind of change? Fix a bug? Refactor? Add a feature?"
+```
 
-- **When you don't know what to do with the result**: Be honest. Say "I've
-  loaded the skill but I'm not sure this is what you wanted. Can you clarify?"
+**Wrong skill loaded** → Apologize, unload, try the next best match.
+```
+→ "That wasn't quite the right skill. Let me try another approach..."
+```
+
+**Multi-skill detected** → Propose the plan, then execute step by step.
+```
+→ "This sounds like a pipeline: I'll use paper-reading to read the papers
+   first, then thesis-writing to compose the review. Shall I proceed?"
+```
+
+---
+
+## Self-maintenance
+
+This SKILL.md doesn't need updating — the routing table is built dynamically
+each time. But if you discover a pattern that this file doesn't describe well,
+improve it. The process is the product.
