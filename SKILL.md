@@ -1,6 +1,6 @@
 ---
 name: skill-router
-description: Scan, discover, and route user intent to the best matching installed skill. Dynamic routing from your actual skills — no hardcoded rules.
+description: "CRITICAL ROUTING SKILL: Scan, discover, and route user intent to the best matching installed skill. Dynamic routing from your actual skills — no hardcoded rules."
 triggers:
   - route
   - 路由
@@ -10,198 +10,209 @@ triggers:
   - skill推荐
   - skill routing
   - 自动匹配技能
+  - 帮我找skill
+  - 推荐skill
 ---
 
-# Skill Router
+# Skill Router — MUST READ BEFORE ROUTING
 
-Route any user request to the right skill. The router doesn't guess what
-skills you *might* have — it scans what you *actually* have and matches
-against those.
+**CRITICAL: This is a meta-skill. It does NOT do work itself. Its only job
+is to find the right skill and hand off. You MUST execute all three phases
+below, in order, every time. No shortcuts. No guessing.**
+
+```
+User request
+  → Phase 1: SCAN (discover installed skills)
+  → Phase 2: MATCH (compare against user intent)
+  → Phase 3: ACT (invoke, propose, or fallback)
+  → Outcome + handoff
+```
+
+**If you skip a phase**, the user will get wrong results and lose trust.
+**If you guess instead of scanning**, you will route to skills that don't
+exist. **You must follow the process.**
 
 Works across Claude Code, WorkBuddy, OpenCode, Gemini CLI, Codex, OpenClaw,
 Cursor, and any platform that uses `SKILL.md`.
 
-## When to use
+---
 
-- User says something ambiguous — you're not sure which skill to use.
-- User doesn't know what skills are available.
-- User wants to do something that might span multiple skills.
-- User mentions a task and you want to check if a relevant skill exists.
+## PHASE 1: SCAN — DISCOVER ALL SKILL FILES
 
-**Do NOT use** when the user explicitly names a skill (`/skill-name` or `@skill`).
+**This is mandatory. You MUST NOT skip this phase.**
 
-## How the router works
+Read every `SKILL.md` you can find. For each skill, extract three fields:
+**name**, **description**, and **triggers** (from YAML frontmatter only).
 
-The router has three phases. Always execute them in order.
+Check these locations **in this order**:
 
-### Phase 1: Scan — discover all available skills
+| Priority | Level | Paths |
+|----------|-------|-------|
+| **1st** | **Project** | `.claude/skills/*/SKILL.md`, `.workbuddy/skills/*/SKILL.md`, `.opencode/skills/*/SKILL.md`, `.gemini/skills/*/SKILL.md`, `.codex/skills/*/SKILL.md`, `.openclaw/skills/*/SKILL.md`, `.cursor/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md` |
+| **2nd** | **User** | `~/.claude/skills/*/SKILL.md`, `~/.workbuddy/skills/*/SKILL.md`, `~/.config/opencode/skills/*/SKILL.md`, `~/.gemini/skills/*/SKILL.md`, `~/.codex/skills/*/SKILL.md`, `~/.openclaw/skills/*/SKILL.md`, `~/.agents/skills/*/SKILL.md` |
 
-Read every skill directory you can find. For each skill, read its `SKILL.md`
-and extract three things: **name**, **description**, and **triggers** (from
-the YAML frontmatter).
+### Rules
 
-Check these locations in order of priority:
+- **If the same skill name exists at both project and user level**: prefer
+  the project-level one (it's more context-specific).
+- **If a directory doesn't exist**: skip it silently. No warnings.
+- **If a SKILL.md has no frontmatter**: use the directory name as fallback.
+- **Do NOT scan** hidden directories (`.git/`, `__pycache__/`, `.venv/`, etc.).
+- **You MUST list what you found** in your response — show the count and the
+  platforms. Example: `"Scanned 46 skills across 3 platforms (WorkBuddy,
+  Claude Code, Universal agents)."`
 
-| Priority | Level | Paths to scan |
-|----------|-------|---------------|
-| 1st | **Project** | `.claude/skills/*/SKILL.md`, `.workbuddy/skills/*/SKILL.md`, `.opencode/skills/*/SKILL.md`, `.gemini/skills/*/SKILL.md`, `.codex/skills/*/SKILL.md`, `.openclaw/skills/*/SKILL.md`, `.cursor/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md` |
-| 2nd | **User** | `~/.claude/skills/*/SKILL.md`, `~/.workbuddy/skills/*/SKILL.md`, `~/.config/opencode/skills/*/SKILL.md`, `~/.gemini/skills/*/SKILL.md`, `~/.codex/skills/*/SKILL.md`, `~/.openclaw/skills/*/SKILL.md`, `~/.agents/skills/*/SKILL.md` |
+---
 
-**Deduplication rule**: If the same skill name exists at both project and user
-level, prefer the project-level one (it's more context-specific).
+## PHASE 2: MATCH — EVALUATE EACH SKILL
 
-Build a table like this in your working memory:
+**This is mandatory. You MUST compare the user's request against EVERY
+scanned skill. Do NOT cherry-pick.**
 
-```
-Available skills:
-├── paper-reading    — Read and summarize academic papers. Triggers: paper, 论文, research
-├── git-commit-writer — Write conventional commit messages. Triggers: commit, 提交, git
-├── code-reviewer    — Review code for bugs and style issues. Triggers: review, 审查, lint
-└── ...
-```
-
-### Phase 2: Match — find the best skill for the user's intent
-
-Compare the user's request against every skill's **name**, **description**,
+Compare the user's request against each skill's **name**, **description**,
 and **triggers** field.
 
-**Matching rules** (use your judgment — you understand semantics, not just
-keywords):
+### Confidence Levels
 
-1. **Exact trigger match** → High confidence. User says "论文", skill has
-   `triggers: [论文]`. Immediately load that skill.
+| Level | Condition | Action |
+|-------|-----------|--------|
+| **High (≥0.85)** | User's words match a skill's triggers exactly, OR name/description is an unambiguous match | Load the skill immediately. Do not ask. |
+| **Medium (0.5–0.85)** | Semantic match but not exact (e.g., user says "文献" and skill triggers don't include it, but description mentions "academic papers") | **MUST show the user** at least 2 options with scores. Let them pick. |
+| **Low (<0.5)** | Multiple skills partially match | Show all candidates. Ask clarifying questions. |
+| **No match** | No skill matches the user's intent at all | Go to Phase 3. |
 
-2. **Semantic match** → Medium confidence. User says "帮我理一下参考文献的
-   逻辑", no exact trigger, but `paper-reading`'s description matches.
-   Present this option to the user.
+### CRITICAL RULES
 
-3. **Broad match** → Low confidence. User says "写点东西" and multiple
-   writing-related skills exist. Show them as options.
+- **You MUST NOT guess skill names or descriptions.** You read them from the
+  actual SKILL.md files in Phase 1. If you didn't find a file for it, it
+  doesn't exist.
+- **You MUST NOT invent skills.** If no installed skill matches, go to Phase 3.
+  Do not pretend a skill exists.
+- **You MUST present the confidence scores.** Show the user why you chose
+  one skill over another.
+- **Low confidence means you ask.** If you're not sure, ask. Never silently
+  pick the wrong one.
 
-4. **No match** → Fallback to network search (Phase 3).
+---
 
-### Phase 3: Fallback — search community skills
+## PHASE 3: ACT — INVOKE, PROPOSE, OR FALL BACK
 
-If no installed skill matches:
+Based on Phase 2's result, take one of these actions:
+
+### Action A: Single clear match (high confidence)
+
+1. Announce which skill you found and why.
+2. **Load the skill** and follow its instructions.
+3. After the skill finishes, return to the user.
+
+**You MUST NOT ask for confirmation** when confidence is high. Just do it.
+
+### Action B: Multiple matches (medium/low confidence)
+
+1. Present the candidates with scores and reasoning.
+2. **Let the user pick.**
+3. Load the chosen skill.
+
+### Action C: No match (fallback)
 
 1. Run: `npx skills find "<describe the user's need in 5-10 English words>"`
-2. Read the results. Select the most relevant ones.
-3. Present up to 3 options to the user:
-   - Show the skill name, description, and install command.
-   - Ask: "Would you like to install one of these?"
-4. If they say yes: `npx skills add <owner/repo@skill> -g -y`
+2. Read the results. Select the most relevant 1-3 options.
+3. Present them to the user with name, description, and install command.
+4. If the user wants to install: `npx skills add <owner/repo@skill> -g -y`
 5. After install, the skill is immediately available.
 
-> **Note**: If `npx` is not available, fall back to suggesting the user
-> search manually at https://skills.sh or https://github.com/topics/agent-skills.
+If `npx` is not available: suggest searching manually at
+https://skills.sh or https://github.com/topics/agent-skills.
 
 ---
 
-## Multi-skill routing
+## MULTI-SKILL ROUTING
 
-Some requests need multiple skills. Detect and handle these patterns:
+Some requests need multiple skills working together. Detect these patterns:
 
-| Pattern | What it means | When to use |
-|---------|---------------|-------------|
-| **Pipeline** | Skill A's output feeds into Skill B | "Read this paper and write a summary" — need to read first, then write |
-| **Parallel** | Skills A and B are independent | "Check GitHub trends and search for AI news" — both independent |
-| **Compose** | Both skills contribute to the same output | "Design and build a landing page" — design + development together |
+| Pattern | Meaning | Example |
+|---------|---------|---------|
+| **Pipeline** | A → B (A's output feeds B) | "Read paper then write summary" |
+| **Parallel** | A \|\| B (independent) | "Check GitHub trends AND search news" |
+| **Compose** | A + B (both contribute) | "Design AND build landing page" |
 
-**How to detect**: Read the user's request. If it implies a sequence of steps,
-those steps can map to different skills. Ask yourself: "Does this request have
-multiple phases that different skills could handle?"
+**How to detect**: Ask "Does this request have multiple phases that different
+skills could handle?" If yes, propose the orchestration plan to the user.
 
-**When you detect multi-skill needs**:
-
-1. List the skills involved.
-2. Propose the orchestration to the user: "I'll use skill A to read the paper,
-   then skill B to write the summary. Sound good?"
-3. Execute one skill at a time, passing context between them.
+**CRITICAL**: Execute one skill at a time. Do NOT load all skills at once.
+Pass context between them explicitly.
 
 ---
 
-## Routing process (show this to the user)
+## OUTPUT FORMAT — YOU MUST FOLLOW THIS
 
-The router's output format. Always present the routing steps so the user
-can see what happened:
+Every time you route, you **MUST** present the result in this exact format.
+Do not omit phases. Do not merge them.
 
-Phase 1: Scan — list what was found.
-Phase 2: Match — show scores and reasoning.
-Phase 3: Action — show the result.
-
-### Format: found a match
-
+### Single match
 ```
-**Phase 1: Scan** ✅ — scanned 46 skills across 3 platforms
+**Phase 1: Scan** ✅ — N skills across M platforms
 
 **Phase 2: Match** — "{user prompt}"
+→ Single high-confidence match found
 
 | Skill | Confidence | Reason |
 |-------|-----------|--------|
-| paper-reading | high ~0.9 | triggers: 论文. User said "论文". |
-| thesis-writing | medium ~0.5 | desc mentions "论文" |
+| name | high ~0.95 | trigger/description matched "{keyword}" |
 
-**Result**: paper-reading matches best. Load it?
+**Result**: Loading [name]. [Brief summary of what it does.]
 ```
 
-### Format: no match (fallback needed)
-
+### Multiple matches
 ```
-**Phase 1: Scan** ✅ — scanned 46 skills
+**Phase 1: Scan** ✅ — N skills
+
+**Phase 2: Match** — "{user prompt}"
+→ Multiple candidates
+
+| Skill | Confidence | Reason |
+|-------|-----------|--------|
+| skill-a | 0.75 | reason |
+| skill-b | 0.60 | reason |
+
+**Result**: Which one would you like to use?
+```
+
+### No match
+```
+**Phase 1: Scan** ✅ — N skills
 
 **Phase 2: Match** — "{user prompt}"
 → No match found among installed skills.
 
 **Phase 3: Fallback** — searching skills.sh...
-→ Found "some-skill" — install it?
-```
-
-### Format: multi-skill detected
-
-```
-**Phase 1: Scan** ✅
-
-**Phase 2: Match** — "写论文综述"
-→ Pipeline detected: paper-reading → thesis-writing
-
-**Result**: Shall I use paper-reading to read, then thesis-writing to write?
-```
-
-**Single clear match** → Load immediately. Don't ask.
-```
-User: "帮我查一下这篇论文"
-→ Matches paper-reading (trigger: 论文). Load it.
-```
-
-**Multiple matches** → Show options, let user pick.
-```
-User: "帮我 review 一下代码"
-→ code-reviewer (triggers: review) and oracle (description: architecture analysis)
-→ "I have two skills for this: code-reviewer (code quality) and oracle
-   (architecture review). Which would you like?"
-```
-
-**Ambiguous intent** → Ask clarifying questions.
-```
-User: "帮我把这个改一下"
-→ Too vague. Ask: "What kind of change? Fix a bug? Refactor? Add a feature?"
-```
-
-**Wrong skill loaded** → Apologize, unload, try the next best match.
-```
-→ "That wasn't quite the right skill. Let me try another approach..."
-```
-
-**Multi-skill detected** → Propose the plan, then execute step by step.
-```
-→ "This sounds like a pipeline: I'll use paper-reading to read the papers
-   first, then thesis-writing to compose the review. Shall I proceed?"
+→ Found "some-skill" (description). Install it?
 ```
 
 ---
 
-## Self-maintenance
+## INTERACTION RULES
 
-This SKILL.md doesn't need updating — the routing table is built dynamically
-each time. But if you discover a pattern that this file doesn't describe well,
-improve it. The process is the product.
+- **High confidence**: Load immediately. Do not ask.
+- **Medium/low confidence**: Show options. Let user pick.
+- **Ambiguous intent**: Ask clarifying questions before routing.
+- **Wrong skill loaded**: Unload immediately. Say "That wasn't right."
+  Try next best match or ask for clarification.
+- **Multi-skill detected**: Propose plan. Execute step by step.
+- **User names a skill explicitly** (`/name` or `@name`): **Do NOT use this
+  skill.** The user already knows what they want.
+
+**CRITICAL**: If you loaded a skill and it completes, return to the user.
+Do not start another routing cycle unless the user asks.
+
+---
+
+## WHY THIS PROCESS MATTERS
+
+- **If you skip Phase 1**: You will route to skills that don't exist.
+- **If you skip Phase 2 scoring**: The user won't know why you chose what
+  you chose.
+- **If you skip Phase 3**: The user gets "nothing found" without options.
+- **If you skip the output format**: The user can't follow what happened.
+
+**Follow the phases. Every time. No exceptions.**
