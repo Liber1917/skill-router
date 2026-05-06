@@ -1,6 +1,15 @@
 ---
 name: skill-router
 description: Scan, discover, and route user intent to the best matching installed skill. Dynamic routing from your actual skills — no hardcoded rules.
+triggers:
+  - route
+  - 路由
+  - 不知道用什么技能
+  - 有什么skill
+  - which skill
+  - skill推荐
+  - skill routing
+  - 自动匹配技能
 ---
 
 # Skill Router
@@ -111,7 +120,52 @@ multiple phases that different skills could handle?"
 
 ---
 
-## Interaction rules
+## Routing process (show this to the user)
+
+The router's output format. Always present the routing steps so the user
+can see what happened:
+
+Phase 1: Scan — list what was found.
+Phase 2: Match — show scores and reasoning.
+Phase 3: Action — show the result.
+
+### Format: found a match
+
+```
+**Phase 1: Scan** ✅ — scanned 46 skills across 3 platforms
+
+**Phase 2: Match** — "{user prompt}"
+
+| Skill | Confidence | Reason |
+|-------|-----------|--------|
+| paper-reading | high ~0.9 | triggers: 论文. User said "论文". |
+| thesis-writing | medium ~0.5 | desc mentions "论文" |
+
+**Result**: paper-reading matches best. Load it?
+```
+
+### Format: no match (fallback needed)
+
+```
+**Phase 1: Scan** ✅ — scanned 46 skills
+
+**Phase 2: Match** — "{user prompt}"
+→ No match found among installed skills.
+
+**Phase 3: Fallback** — searching skills.sh...
+→ Found "some-skill" — install it?
+```
+
+### Format: multi-skill detected
+
+```
+**Phase 1: Scan** ✅
+
+**Phase 2: Match** — "写论文综述"
+→ Pipeline detected: paper-reading → thesis-writing
+
+**Result**: Shall I use paper-reading to read, then thesis-writing to write?
+```
 
 **Single clear match** → Load immediately. Don't ask.
 ```
