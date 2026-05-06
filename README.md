@@ -1,66 +1,61 @@
 # skill-router
 
-A cross-platform natural language router for agent skills.
-
-Find the right skill wherever it lives — across Claude Code, WorkBuddy, OpenCode,
-Gemini CLI, Codex, Cursor, and more.
-
-```bash
-# Route a prompt to the best matching skill
-skill-route "帮我写一篇论文综述"
-
-# → paper-reading (0.87 · user · claude)
-#   @ ~/.claude/skills/paper-reading/SKILL.md
-```
-
-## Key features
-
-- **Cross-platform** — scans 8+ agent platform skill directories automatically
-- **Intent-aware routing** — keyword → TF-IDF → LLM (3 levels)
-- **Multi-skill detection** — detects pipeline, parallel, and compose relationships
-- **Network fallback** — searches skills.sh when nothing matches locally
-- **Zero config** — works out of box, auto-detects which platforms you use
-
-## Platforms supported
-
-| Platform | User-level | Project-level |
-|----------|-----------|---------------|
-| Claude Code | `~/.claude/skills/` | `.claude/skills/` |
-| WorkBuddy | `~/.workbuddy/skills/` | `.workbuddy/skills/` |
-| OpenCode | `~/.config/opencode/skills/` | `.opencode/skills/` |
-| OpenClaw | `~/.openclaw/skills/` | `.openclaw/skills/` |
-| Gemini CLI | `~/.gemini/skills/` | `.gemini/skills/` |
-| Codex CLI | `~/.codex/skills/` | `.codex/skills/` |
-| Cursor | — | `.cursor/skills/` |
-| Universal | `~/.agents/skills/` | `.agents/skills/` |
-
-## Install
+A pure SKILL.md router for agent skills. Install it like any other skill.
+Your AI reads the routing rules and automatically loads the right skill for
+whatever the user asks.
 
 ```bash
-pip install skill-router
+# Install: copy SKILL.md to your skills directory
+cp SKILL.md ~/.claude/skills/skill-router/SKILL.md
+
+# Or use npx skills
+npx skills add Liber1917/skill-router
 ```
 
-## Usage
+## How it works
+
+This is a meta-skill. It doesn't do work itself — it routes user intent to the
+best matching installed skill.
+
+```
+User: "帮我写一篇论文综述"
+  → skill-router reads routing table
+  → Matches "论文" to arxiv-reader + "综述" to content-ops
+  → pipeline: arxiv-reader → content-ops
+  → Loads both, executes in sequence
+```
+
+## What it covers
+
+- **50+ routing rules** — writing, code, research, design, data, workflow, more
+- **Multi-skill patterns** — pipeline, parallel, compose
+- **8+ platforms** — Claude Code, WorkBuddy, OpenCode, Gemini CLI, Codex etc.
+- **Network fallback** — `npx skills find` when nothing local matches
+- **Self-maintaining** — add new rules as you discover them
+
+## Quick start
+
+1. Copy `SKILL.md` to your skills directory
+2. Start asking your AI to do things without naming a skill
+3. The AI reads this file and routes automatically
+
+## CLI (optional)
+
+A Python CLI tool lives in `cli/` for power users who want TF-IDF matching
+or batch routing table maintenance. Purely optional — the SKILL.md works alone.
 
 ```bash
-# Route a prompt
-skill-route "write a react component"
-
-# Route with context
-skill-route "fix this bug" --cwd /path/to/project
-
-# List detected platforms
-skill-route platforms
-
-# Index stats
-skill-route index stats
-
-# JSON output (for scripts)
-skill-route "review my code" --json
-
-# Search skills.sh
-skill-route search "react component generator"
+pip install cli/   # or: cd cli && pip install -e .
+skill-route "帮我写论文"
 ```
+
+## Design
+
+Why a SKILL.md and not a Python package? Because GSD proved that routing is
+fundamentally an AI-interpretable task, not a computational one. The AI reads
+the routing rules, understands intent, and makes better routing decisions than
+any TF-IDF vector could. The SKILL.md is self-contained, zero-install, and
+works across every agent platform.
 
 ## License
 

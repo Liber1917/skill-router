@@ -1,50 +1,30 @@
-# AGENTS.md
-
-You are an AI agent working in the **skill-router** repository.
-This file tells you what matters.
+# AGENTS.md — skill-router
 
 ## What this repo is
 
-**skill-router** is a cross-platform natural language router for agent skills.
-It scans skill directories across 8+ agent platforms and routes user prompts
-to the best matching skill using keyword, TF-IDF, and optional LLM matching.
+**skill-router** is a pure SKILL.md routing skill. It routes user prompts to the
+best matching installed skill. No Python, no install, no build.
 
-We are **not** a skill engine, marketplace, or execution platform.
-We find the right skill — we don't run it.
+The primary artifact is `SKILL.md` at the repo root. Copy it to any agent
+platform's skills directory and it works.
 
-## What matters
+## Repo structure
 
-| File | Why it matters |
-|------|---------------|
-| `src/skill_router/types.py` | Core data types: SkillMeta, RouteResult, Platform, Tier, Mode |
-| `src/skill_router/scanner/` | Cross-platform skill directory scanner |
-| `src/skill_router/matcher/` | 3-level intent matcher (keyword → TF-IDF → LLM) |
-| `src/skill_router/composer/` | Multi-skill relationship detection + orchestration planning |
-| `src/skill_router/network/` | skills.sh search + installer (user-confirmed) |
-| `src/skill_router/cli.py` | Typer CLI entry point |
-| `tests/` | All tests |
-| `pyproject.toml` | Python 3.12, uv workspace, hatchling build, ruff + pyright |
-
-## Commands
-
-```bash
-uv run pytest                              # run tests
-uv run ruff check .                        # lint
-uv run ruff format .                       # format
-uv run pyright                             # type check
-uv run skill-route "prompt"                # route a prompt
-uv run skill-route platforms               # list platforms
+```
+SKILL.md          ← the product (copy this to ~/.claude/skills/skill-router/)
+README.md         ← usage instructions
+cli/              ← optional Python CLI (parser, registry, TF-IDF matching)
+  pyproject.toml  ← pip installable (pip install cli/)
+  types.py        ← shared data types
+  scanner/        ← cross-platform skill directory scanner
+  matcher/        ← (future) TF-IDF matcher
+  composer/       ← (future) multi-skill orchestration
+  network/        ← (future) skills.sh search
+  tests/          ← 36 tests ✅
 ```
 
-## How to contribute
+## Important
 
-1. Make changes, write or update tests
-2. `uv run ruff check . && uv run ruff format . && uv run pyright && uv run pytest`
-3. All three must pass before committing
-4. Use Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`
-
-## What NOT to do
-
-- Do not add HTTP API / serve mode (explicitly excluded from v0.1)
-- Do not add skill execution logic (we route, we don't run)
-- Do not depend on agent-skill-infra (we're independent)
+- The SKILL.md IS the product. Everything else is optional.
+- The Python CLI is an optional companion, not the main tool.
+- The routing table in SKILL.md is self-maintaining — add new rules as you discover them.
