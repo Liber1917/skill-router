@@ -202,8 +202,37 @@ Do not omit phases. Do not merge them.
 - **User names a skill explicitly** (`/name` or `@name`): **Do NOT use this
   skill.** The user already knows what they want.
 
-**CRITICAL**: If you loaded a skill and it completes, return to the user.
-Do not start another routing cycle unless the user asks.
+---
+
+## CONTROL HANDOFF — CRITICAL
+
+After a loaded skill completes its task, you MUST return to routing mode.
+
+**Three scenarios:**
+
+1. **User continues the same thread** — The loaded skill is still working.
+   Stay in that skill. Do not re-route.
+
+2. **User's next request is unrelated** — The loaded skill is no longer
+   relevant. Re-enter the router immediately:
+   - Re-run Phase 1 (scan) — skills may have changed since last time.
+   - Run Phase 2 (match) against the new request.
+   - Proceed to Phase 3 (act).
+
+3. **Uncertain** — The line between "same thread" and "new request" is
+   blurry. When in doubt, re-scan and propose. Running the router costs
+   nothing — guessing the wrong continuation loses user trust.
+
+**Example:**
+```
+User: "帮我检查 GitHub 仓库"        → router → loads github skill
+  → github skill runs, reports results
+User: "那再帮我看看论文"            → thread changed. Re-enter router.
+  → Phase 1: scan → Phase 2: match → arxiv-reader matches
+```
+
+**Do NOT** assume the user is done with the router after one route.
+The router is a persistent dispatcher — it stays active for the session.
 
 ---
 
