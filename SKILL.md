@@ -1,6 +1,6 @@
 ---
 name: skill-router
-description: "CRITICAL: Route user intent to the best matching installed skill via dynamic cross-platform scan. Uses triage + scan + match + guard hook lifecycle. Audit trail via [skill-router] prefix."
+description: "CRITICAL: Route user intent to the best matching installed skill via dynamic cross-platform scan. ENTRY GUARD → SCAN → MATCH → LOAD GUARD → VERIFY HOOK → CONTROL HOOK lifecycle. Audit trail via [skill-router] prefix."
 triggers:
   - route
   - 路由
@@ -23,8 +23,8 @@ This makes the audit trail grep-able across sessions.
 `grep '\[skill-router\]'` in any transcript to see what fired.
 
 ```
-[skill-router] ┌── Triage ──→ SCAN ──→ Match ──→ Guard ──→ Load ──→ Verify ──→ Control ──┐
-[skill-router] └──────────────────────── persistent loop ────────────────────────────────┘
+[skill-router] ┌─ ENTRY GUARD ─→ SCAN ─→ MATCH ─→ LOAD GUARD ─→ Load skill ─→ VERIFY HOOK ─→ CONTROL HOOK ─┐
+[skill-router] └────────────────────────── persistent loop ────────────────────────────────────────────────┘
 ```
 
 Works across Claude Code, WorkBuddy, OpenCode, Gemini CLI, Codex, OpenClaw,
@@ -32,28 +32,22 @@ Cursor, and any platform that uses `SKILL.md`.
 
 ---
 
-## 1. TRIAGE — 3-QUESTION CLASSIFIER
+## 1. ENTRY GUARD — ROUTE OR CHAT?
 
-Before any scan, classify the user request with 3 questions.
-**Run this in <2 seconds. Prefix every line with `[skill-router]`.**
+**FIRST thing you do when this skill is loaded.** Before any scan, any match —
+decide: does this user message need routing at all?
 
-```
-[skill-router] Q1: Is something BROKEN / WRONG / FAILING?
-              Error, crash, test fail, unexpected behavior, user correction
-              YES → needs a debugging/correction skill → mark as [FIX]
-
-[skill-router] Q2: Is this CREATE / BUILD / ADD something new?
-              New feature, file, component, integration, project
-              YES → needs a creation skill → mark as [BUILD]
-
-[skill-router] Q3: Everything else (improve, ship, configure, automate, research)
-              → mark as [OPERATE]
-```
-
-**Rule**: AMBIGUOUS? → Default to [OPERATE]. Never skip triage entirely.
-
-**If the user is clearly just chatting** (greeting, simple question, no task):
+If the user is clearly just chatting:
+- Greetings ("你好", "hello")
+- Simple factual questions ("Python 怎么排序", "今天天气")
+- Casual conversation
 → Exit router. Do NOT prefix anything. Reply normally.
+
+If the user describes a task, names a domain, or asks "帮" + verb:
+→ Enter SCAN phase.
+
+**Rule**: When in doubt, route. False positives waste 5 seconds. False
+negatives miss the right skill entirely.
 
 ---
 
@@ -144,7 +138,7 @@ After the loaded skill finishes:
 After route + execution, the router stays active:
 
 - **Same thread** → Stay in loaded skill. No re-route.
-- **New thread** → Re-enter TRIAGE → SCAN → MATCH → GUARD.
+- **New thread** → Re-enter ENTRY GUARD → SCAN → MATCH → GUARD.
 - **Uncertain** → Default to re-scan.
 
 ---
@@ -154,7 +148,7 @@ After route + execution, the router stays active:
 Every route step **MUST** prefix with `[skill-router]`. Example:
 
 ```
-[skill-router] Triage: [BUILD] user wants to create something
+[skill-router] Entry: wants routing — task detected
 [skill-router] Scan: 46 skills across 3 platforms
 [skill-router] Match: paper-reading (high ~0.92) — trigger "论文" matches
 [skill-router] Load Guard: Passed (≥0.85)
@@ -171,7 +165,7 @@ Every route step **MUST** prefix with `[skill-router]`. Example:
 
 **Multi-skill format**:
 ```
-[skill-router] Triage: [BUILD] multi-domain detected
+[skill-router] Entry: wants routing — multi-domain
 [skill-router] Scan: 46 skills
 [skill-router] Match: pipeline detected — paper-reading → thesis-writing
 [skill-router] Load Guard: Proposing pipeline to user
@@ -197,7 +191,7 @@ If the user has given explicit consent:
 Append a JSONL line to `~/.skill-router/log.jsonl` after each route:
 
 ```jsonl
-{"ts":"2026-05-07T09:00:00","triage":"BUILD","prompt":"帮我写论文","matched":"paper-reading","score":0.92,"verify":"success"}
+{"ts":"2026-05-07T09:00:00","prompt":"帮我写论文","matched":"paper-reading","score":0.92,"verify":"success"}
 ```
 
 **Do NOT log without asking the user first.**
@@ -210,7 +204,7 @@ No data leaves your machine. Opt in?"
 
 | # | Check | Pass |
 |---|-------|------|
-| 1 | Did I run TRIAGE (3 questions)? | ☐ |
+| 1 | Did I pass ENTRY GUARD (route or chat)? | ☐ |
 | 2 | Did I SCAN actual directories (not guess)? | ☐ |
 | 3 | Did I compare against ALL scanned skills? | ☐ |
 | 4 | Did I pass LOAD GUARD before loading? | ☐ |
