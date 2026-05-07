@@ -9,8 +9,8 @@ from skill_router.scanner.registry import PlatformPaths, PlatformRegistry
 
 __all__ = [
     "detect_platforms",
-    "resolve_paths",
     "platforms_summary",
+    "resolve_paths",
 ]
 
 
@@ -52,9 +52,11 @@ def platforms_summary(cwd: str = ".", home: str | None = None) -> list[dict[str,
     rows: list[dict[str, object]] = []
     for entry in detect_platforms(cwd=cwd, home=home):
         user_abs, proj_abs = resolve_paths(entry, cwd=cwd, home=home)
-        rows.append({
-            "platform": entry.platform.value,
-            "user_path": user_abs,
-            "project_path": proj_abs,
-        })
+        rows.append(
+            {
+                "platform": entry.platform.value,
+                "user_path": user_abs,
+                "project_path": proj_abs,
+            }
+        )
     return rows

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from skill_router.scanner.platforms import detect_platforms, platforms_summary, resolve_paths
 from skill_router.scanner.registry import PlatformPaths, PlatformRegistry
 from skill_router.types import Platform
-
 
 # ---------------------------------------------------------------------------
 # detect_platforms

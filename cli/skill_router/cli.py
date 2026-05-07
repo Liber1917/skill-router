@@ -91,25 +91,19 @@ def search(
     console.print("[yellow]Network search not yet implemented[/]")
 
 
-@app.group()
-def index() -> None:
-    """Manage skill index."""
-    pass
-
-
-@index.command()
+@app.command()
 def rebuild() -> None:
     """Rebuild the skill index."""
     console.print("[yellow]Index rebuild not yet implemented[/]")
 
 
-@index.command()
+@app.command(name="list")
 def list_skills() -> None:
     """List all indexed skills."""
     console.print("[yellow]Index list not yet implemented[/]")
 
 
-@index.command()
+@app.command()
 def stats() -> None:
     """Show skill index statistics."""
     console.print("[yellow]Index stats not yet implemented[/]")

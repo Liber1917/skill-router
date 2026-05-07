@@ -24,7 +24,7 @@ class PlatformPaths:
     """
 
     platform: Platform
-    user_path: str | None   # relative, e.g. ".claude/skills"; None → no user-level dir
+    user_path: str | None  # relative, e.g. ".claude/skills"; None → no user-level dir
     project_path: str | None  # relative to cwd; None → no project-level dir
 
     def expand(self, cwd: str = ".", home: str | None = None) -> tuple[str | None, str | None]:
@@ -38,7 +38,9 @@ class PlatformPaths:
             home = os.path.expanduser("~")
 
         user = os.path.join(home, self.user_path) if self.user_path else None
-        project = os.path.join(os.path.abspath(cwd), self.project_path) if self.project_path else None
+        project = (
+            os.path.join(os.path.abspath(cwd), self.project_path) if self.project_path else None
+        )
         return user, project
 
 

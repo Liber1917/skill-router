@@ -7,10 +7,10 @@ import os
 from skill_router.scanner.registry import PlatformPaths, PlatformRegistry
 from skill_router.types import Platform
 
-
 # ---------------------------------------------------------------------------
 # PlatformPaths
 # ---------------------------------------------------------------------------
+
 
 def test_platform_paths_defaults() -> None:
     """A full-platform entry should store relative paths."""

@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 __all__ = [
-    "Platform",
-    "Tier",
     "Mode",
-    "SkillMeta",
+    "Platform",
     "RouteResult",
+    "SkillMeta",
+    "Tier",
 ]
 
 
-class Platform(str, Enum):
+class Platform(StrEnum):
     """Known agent platforms."""
 
     CLAUDE = "claude"
@@ -28,7 +28,7 @@ class Platform(str, Enum):
     UNKNOWN = "unknown"
 
 
-class Tier(str, Enum):
+class Tier(StrEnum):
     """Skill tier: project-level or user-level."""
 
     PROJECT = "project"
@@ -36,7 +36,7 @@ class Tier(str, Enum):
     NETWORK = "network"
 
 
-class Mode(str, Enum):
+class Mode(StrEnum):
     """Routing mode."""
 
     SINGLE = "single"

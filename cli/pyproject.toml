@@ -2,7 +2,7 @@
 name = "skill-router-cli"
 version = "0.1.0"
 description = "Optional CLI companion for skill-router — skill scanning, TF-IDF matching, and routing table maintenance"
-readme = "README.md"
+readme = "../README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12"
 authors = [{ name = "Liber1917" }]
@@ -56,7 +56,7 @@ src = ["."]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
-"cli.py" = ["B008"]
+"skill_router/cli.py" = ["B008"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["skill_router"]
@@ -67,7 +67,7 @@ typeCheckingMode = "standard"
 venvPath = ".venv"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ["skill_router"]
 
 [build-system]
 requires = ["hatchling"]

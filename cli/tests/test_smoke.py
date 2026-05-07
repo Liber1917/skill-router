@@ -10,7 +10,7 @@ runner = CliRunner()
 def test_help_succeeds() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "skill-router" in result.stdout
+    assert "skill-route" in result.stdout
 
 
 def test_version() -> None:

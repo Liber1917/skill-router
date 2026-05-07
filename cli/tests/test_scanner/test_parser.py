@@ -6,7 +6,6 @@ import pytest
 
 from skill_router.scanner.parser import parse_skill_md
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -131,9 +130,7 @@ class TestParseSkillMd:
         with pytest.raises(FileNotFoundError):
             parse_skill_md("/nonexistent/path/SKILL.md")
 
-    def test_no_frontmatter_fallback_to_filename(
-        self, no_frontmatter_skill: Path
-    ) -> None:
+    def test_no_frontmatter_fallback_to_filename(self, no_frontmatter_skill: Path) -> None:
         meta = parse_skill_md(no_frontmatter_skill)
         assert meta.name == "SKILL"  # stem of "SKILL.md"
         assert meta.description == ""
@@ -146,7 +143,8 @@ class TestParseSkillMd:
         assert meta.triggers == []
 
     def test_partial_frontmatter_uses_fallback_name(
-        self, partial_frontmatter_skill: Path,
+        self,
+        partial_frontmatter_skill: Path,
     ) -> None:
         meta = parse_skill_md(partial_frontmatter_skill)
         # No explicit name in frontmatter — fall back to file stem ("SKILL")
@@ -154,7 +152,8 @@ class TestParseSkillMd:
         assert meta.description == "A skill with no explicit name"
 
     def test_explicit_name_in_frontmatter(
-        self, unusual_filename_skill: Path,
+        self,
+        unusual_filename_skill: Path,
     ) -> None:
         meta = parse_skill_md(unusual_filename_skill)
         # Explicit name should be used, not directory stem
@@ -188,18 +187,14 @@ class TestFrontmatterEdgeCases:
     def test_multiple_crlf_lines(self, tmp_path: Path) -> None:
         """CRLF line endings should still parse correctly."""
         path = tmp_path / "SKILL.md"
-        path.write_bytes(
-            b"---\r\nname: crlf-skill\r\ndescription: CRLF test\r\n---\r\n"
-        )
+        path.write_bytes(b"---\r\nname: crlf-skill\r\ndescription: CRLF test\r\n---\r\n")
         meta = parse_skill_md(path)
         assert meta.name == "crlf-skill"
         assert meta.description == "CRLF test"
 
     def test_whitespace_around_key(self, tmp_path: Path) -> None:
         path = tmp_path / "SKILL.md"
-        path.write_text(
-            "---\n  name  :  spaced-name  \ndescription:  has trailing  \n---\n"
-        )
+        path.write_text("---\n  name  :  spaced-name  \ndescription:  has trailing  \n---\n")
         meta = parse_skill_md(path)
         assert meta.name == "spaced-name"
         assert meta.description == "has trailing"
