@@ -1,6 +1,6 @@
 ---
 name: skill-router
-description: "CRITICAL ROUTING SKILL: Scan, discover, and route user intent to the best matching installed skill. Dynamic routing from your actual skills — no hardcoded rules. This skill uses a hook-based lifecycle: ENTRY GUARD → SCAN → MATCH → LOAD GUARD → VERIFY HOOK → CONTROL HOOK."
+description: "CRITICAL: Route user intent to the best matching installed skill via dynamic cross-platform scan. Uses triage + scan + match + guard hook lifecycle. Audit trail via [skill-router] prefix."
 triggers:
   - route
   - 路由
@@ -18,255 +18,204 @@ triggers:
 
 **CRITICAL: This is a meta-skill. It does NOT do work itself. It routes.**
 
-The router is a **lifecycle with guard hooks at every boundary**. You do not
-"run the router once and forget it" — you enter a persistent routing loop
-that checks, loads, verifies, and re-enters on every user message.
+**Every output line from this skill MUST be prefixed with `[skill-router]`.**
+This makes the audit trail grep-able across sessions.
+`grep '\[skill-router\]'` in any transcript to see what fired.
 
 ```
-┌────────────────────────────────────────────────────┐
-│  [ENTRY GUARD]     用户想路由还是直接聊?            │
-│    ├ 不想路由 → 退出, 正常回复                       │
-│    └ 需要路由 → 进入 SCAN                           │
-├────────────────────────────────────────────────────┤
-│  Phase 1: SCAN    发现所有已安装 skill               │
-├────────────────────────────────────────────────────┤
-│  Phase 2: MATCH   对比用户意图                       │
-├────────────────────────────────────────────────────┤
-│  [LOAD GUARD]     匹配结果可信吗?                    │
-│    ├ high → 直接加载                                │
-│    ├ med  → 展示选项                                 │
-│    ├ low  → 追问                                    │
-│    └ none → 网络回退                                │
-├────────────────────────────────────────────────────┤
-│  [VERIFY HOOK]    skill 执行完, 结果对吗?            │
-│    ├ 对 → 汇报                                      │
-│    └ 错 → 卸载, 回到 SCAN                           │
-├────────────────────────────────────────────────────┤
-│  [CONTROL HOOK]   用户下一条消息                     │
-│    ├ 同主题 → 留在当前 skill                         │
-│    └ 新主题 → 回到 ENTRY GUARD                      │
-└────────────────────────────────────────────────────┘
+[skill-router] ┌── Triage ──→ SCAN ──→ Match ──→ Guard ──→ Load ──→ Verify ──→ Control ──┐
+[skill-router] └──────────────────────── persistent loop ────────────────────────────────┘
 ```
 
-**Every user message enters this cycle. No exceptions. No "one-shot" mode.**
+Works across Claude Code, WorkBuddy, OpenCode, Gemini CLI, Codex, OpenClaw,
+Cursor, and any platform that uses `SKILL.md`.
 
 ---
 
-## [ENTRY GUARD] — Confirm routing is needed
+## 1. TRIAGE — 3-QUESTION CLASSIFIER
 
-**FIRST thing you do when this skill is loaded.** Before any scan, before any
-match — check if the user actually needs routing.
+Before any scan, classify the user request with 3 questions.
+**Run this in <2 seconds. Prefix every line with `[skill-router]`.**
 
 ```
-User says: "帮我查一下 GitHub 仓库"
-→ Heuristic: contains "帮我" + describes a task. This wants a skill. → Proceed.
+[skill-router] Q1: Is something BROKEN / WRONG / FAILING?
+              Error, crash, test fail, unexpected behavior, user correction
+              YES → needs a debugging/correction skill → mark as [FIX]
 
-User says: "今天天气怎么样"
-→ Heuristic: simple factual question. No skill needed. → Exit router, answer directly.
+[skill-router] Q2: Is this CREATE / BUILD / ADD something new?
+              New feature, file, component, integration, project
+              YES → needs a creation skill → mark as [BUILD]
 
-User says: "你好"
-→ Clear social greeting. → Exit router, respond normally.
+[skill-router] Q3: Everything else (improve, ship, configure, automate, research)
+              → mark as [OPERATE]
 ```
 
-**Heuristics to decide** (use your judgment, not keyword matching):
+**Rule**: AMBIGUOUS? → Default to [OPERATE]. Never skip triage entirely.
 
-| Signal | Wants routing | Does NOT want routing |
-|--------|--------------|----------------------|
-| User describes a *task* | ✅ "帮我写论文" | ❌ "今天天气" |
-| User names a *domain* | ✅ "GitHub 上的 issue" | ❌ "你好" |
-| User asks a *simple factual question* | ❌ "Python 怎么排序" | ✅ exit |
-| User continues previous conversation | ❌ depends | use CONTROL HOOK |
-| User explicitly says "帮" + verb | ✅ always | — |
-
-**If unsure**: ask. "I can route this to a skill or just answer directly.
-Which would you prefer?"
-
-**CRITICAL**: False positives (routing when not needed) are wasted time.
-False negatives (not routing when needed) are worse. When in doubt, route.
+**If the user is clearly just chatting** (greeting, simple question, no task):
+→ Exit router. Do NOT prefix anything. Reply normally.
 
 ---
 
-## Phase 1: SCAN — mandatory
+## 2. SCAN — DISCOVER ALL INSTALLED SKILLS
 
-Same as current. Read all skill directories. Report count + platforms.
-**You MUST NOT skip this phase.**
+**This is mandatory. You MUST NOT skip this phase.**
 
----
+Read every `SKILL.md` you can find. Extract **name**, **description**, and
+**triggers** from YAML frontmatter.
 
-## Phase 2: MATCH — mandatory
+Check these locations **in order**:
 
-Same as current. Compare every scanned skill against user intent.
-**You MUST NOT cherry-pick.**
+| Priority | Level | Paths |
+|----------|-------|-------|
+| **1st** | **Project** | `.claude/skills/*/SKILL.md`, `.workbuddy/skills/*/SKILL.md`, `.opencode/skills/*/SKILL.md`, `.gemini/skills/*/SKILL.md`, `.codex/skills/*/SKILL.md`, `.openclaw/skills/*/SKILL.md`, `.cursor/skills/*/SKILL.md`, `.agents/skills/*/SKILL.md` |
+| **2nd** | **User** | `~/.claude/skills/*/SKILL.md`, `~/.workbuddy/skills/*/SKILL.md`, `~/.config/opencode/skills/*/SKILL.md`, `~/.gemini/skills/*/SKILL.md`, `~/.codex/skills/*/SKILL.md`, `~/.openclaw/skills/*/SKILL.md`, `~/.agents/skills/*/SKILL.md` |
 
----
-
-## [LOAD GUARD] — Verify before loading
-
-After Phase 2 produces a result, **do NOT load anything yet**. First pass
-through this guard:
-
-| Match result | Guard action |
-|-------------|--------------|
-| **High (≥0.85)** | Announce the match. Load immediately. **Do NOT ask.** |
-| **Medium (0.5–0.85)** | Present options with scores. **User MUST pick.** |
-| **Low (<0.5)** | Ask clarifying questions. Re-match if needed. |
-| **No match** | Go to Phase 3 (network fallback). |
-
-**CRITICAL**: If you loaded a skill in error, you MUST call
-`[VERIFY HOOK] → failure path`. Do NOT silently continue with the wrong skill.
+**Rules**:
+- Same-name skills: project-level wins over user-level.
+- Missing dir: skip silently.
+- No frontmatter: dir name as fallback.
+- **Do NOT scan** hidden dirs (`.git/`, `__pycache__/`, etc.).
+- Report: `[skill-router] Scanned {N} skills across {M} platforms: {list}.`
 
 ---
 
-## [VERIFY HOOK] — Check the result
+## 3. MATCH — COMPARE AGAINST USER INTENT
 
-After the loaded skill finishes executing, check whether it actually worked.
+Compare the user's request against each scanned skill's **name**, **description**,
+and **triggers**.
 
-**Success signal**: The skill's output matches what the user asked for.
-→ Report results to the user.
+| Level | Condition | Action |
+|-------|-----------|--------|
+| **High (≥0.85)** | Exact trigger match or unambiguous semantic match | Load immediately. **Do NOT ask.** |
+| **Medium (0.5–0.85)** | Semantic match, not exact | Show ≥2 options with scores. Let user pick. |
+| **Low (<0.5)** | Multiple partial matches | Show all. Ask clarifying questions. |
+| **No match** | Nothing relevant | Go to network fallback. |
+
+**CRITICAL**: Do NOT invent skills. Do NOT guess. If not found → fallback.
+
+---
+
+## 4. LOAD GUARD — VERIFY BEFORE LOADING
+
+After match, **do NOT load anything yet**. Pass through this guard:
+
+| Match | Guard action |
+|-------|-------------|
+| **High** | Announce. Load immediately. |
+| **Medium** | Present options. User MUST pick. |
+| **Low** | Ask clarifying. Re-match. |
+| **None** | Network fallback. |
+
+If error: call VERIFY HOOK → failure path.
+
+---
+
+## 5. NETWORK FALLBACK
+
+If no installed skill matches:
+
+1. `npx skills find "<describe need in 5-10 English words>"`
+2. Present up to 3 options with name + description + install command.
+3. User confirms → `npx skills add <owner/repo@skill> -g -y`
+4. After install, skill is immediately available.
+
+If `npx` not available → suggest skills.sh or GitHub.
+
+---
+
+## 6. VERIFY HOOK — CHECK EXECUTION RESULT
+
+After the loaded skill finishes:
+
+**Success**: Output matches user intent.
+→ `[skill-router] Verify: ✅ {skill} completed correctly`
 → Move to CONTROL HOOK.
 
-**Failure signal**: The skill's output is off-topic, incomplete, or wrong.
-→ Say "That wasn't the right skill for this."
-→ **Unload the skill immediately.**
-→ Return to Phase 1 (re-scan) and try again.
-→ If this happens twice in a row, ask the user: "I've tried two skills and
-  neither seems right. Can you describe what you need differently?"
-
-**You MUST NOT** let a wrong skill keep running. Unload on first mismatch.
+**Failure**: Output off-topic, wrong, or incomplete.
+→ `[skill-router] Verify: ❌ {skill} — result didn't match`
+→ Unload. Return to SCAN for next candidate.
+→ If 2 consecutive failures: ask user for clarification.
 
 ---
 
-## [CONTROL HOOK] — Wait for next user message
+## 7. CONTROL HOOK — PERSISTENT SESSION
 
-After a successful route + execution, the router stays active. Each new
-user message runs through the ENTRY GUARD again:
+After route + execution, the router stays active:
 
-- **Same thread** — User asks a follow-up about the same topic.
-  Stay in the loaded skill. Do not re-route.
-
-- **New thread** — User shifts to a completely different topic.
-  Re-enter ENTRY GUARD → SCAN → MATCH → LOAD GUARD.
-
-- **Uncertain** — You can't tell if it's the same thread or a new one.
-  Re-scan and propose. It costs nothing to check.
-
-**Example of correct cycle:**
-
-```
-User: "帮我检查 GitHub 仓库"
-  → ENTRY GUARD: "帮我" + task → wants routing
-  → SCAN: 46 skills
-  → MATCH: github (high 0.9)
-  → LOAD GUARD: high conf, loading...
-  → github skill runs → VERIFY: correct results
-  → CONTROL HOOK: waiting...
-
-User: "那再帮我看看论文"
-  → ENTRY GUARD: new topic (论文 ≠ GitHub) → wants routing
-  → SCAN: 46 skills (re-scan, might have changed)
-  → MATCH: arxiv-reader (high 0.85)
-  → LOAD GUARD: loading...
-  → ...
-```
+- **Same thread** → Stay in loaded skill. No re-route.
+- **New thread** → Re-enter TRIAGE → SCAN → MATCH → GUARD.
+- **Uncertain** → Default to re-scan.
 
 ---
 
-## MULTI-SKILL ROUTING
+## 8. OUTPUT FORMAT — GREP-ABLE CONTRACT
 
-Some requests need multiple skills. Handle them at the MATCH stage:
+Every route step **MUST** prefix with `[skill-router]`. Example:
 
-| Pattern | What to do |
-|---------|-----------|
-| **Pipeline** (A → B) | Load A, run, load B with A's output, run, VERIFY at end |
-| **Parallel** (A ∥ B) | Load both, run independently, merge results |
-| **Compose** (A + B) | Load both, use together on same task |
-
-**CRITICAL**: Execute one at a time. Pass context between them. Do NOT load
-all at once.
-
----
-
-## OUTPUT FORMAT — YOU MUST FOLLOW THIS
-
-Every route attempt **MUST** produce this format. No exceptions.
-
-### Successful route (high confidence)
 ```
-**Phase 1: Scan** ✅ — {N} skills across {M} platforms
-
-**Phase 2: Match** — "{user prompt}"
-→ Single high-confidence match
-
-| Skill | Confidence | Reason |
-|-------|-----------|--------|
-| {name} | high ~{score} | {trigger field matched "{keyword}"} |
-
-**Load Guard**: Passed (≥0.85)
-**Result**: Loading {name}. {brief description}
+[skill-router] Triage: [BUILD] user wants to create something
+[skill-router] Scan: 46 skills across 3 platforms
+[skill-router] Match: paper-reading (high ~0.92) — trigger "论文" matches
+[skill-router] Load Guard: Passed (≥0.85)
+[skill-router] Verify: ✅ paper-reading completed correctly
+[skill-router] Control: waiting — thread active
 ```
 
-### Multiple candidates (medium/low)
+**Failure format**:
 ```
-**Phase 1: Scan** ✅ — {N} skills
-
-**Phase 2: Match** — "{user prompt}"
-→ Multiple candidates
-
-| Skill | Confidence | Reason |
-|-------|-----------|--------|
-| {a} | {0.75} | {reason} |
-| {b} | {0.60} | {reason} |
-
-**Load Guard**: Medium confidence — Which one would you like to use?
+[skill-router] Match: no match found
+[skill-router] Fallback: searching skills.sh...
+[skill-router] Found "thesis-writer" (write academic papers). Install?
 ```
 
-### Fallback (no match)
+**Multi-skill format**:
 ```
-**Phase 1: Scan** ✅ — {N} skills
-
-**Phase 2: Match** — "{user prompt}"
-→ No match found
-
-**Phase 3: Fallback** — searching skills.sh...
-→ Found "{skill-name}" ({description}). Install it?
-```
-
-### Verify hook failure
-```
-**Verify Hook**: ❌ — Loaded {skill} but result doesn't match what user asked.
-
-Unloading {skill}. Re-entering Phase 1...
-
-**Phase 1: Scan** ✅ — re-scanning...
-**Phase 2: Match** — trying next candidate...
+[skill-router] Triage: [BUILD] multi-domain detected
+[skill-router] Scan: 46 skills
+[skill-router] Match: pipeline detected — paper-reading → thesis-writing
+[skill-router] Load Guard: Proposing pipeline to user
 ```
 
 ---
 
-## COMPLIANCE CHECKLIST
+## 9. MULTI-SKILL ROUTING
 
-Before you respond to any user message while this skill is loaded, verify:
+| Pattern | Action |
+|---------|--------|
+| **Pipeline (A → B)** | Load A, run, load B with A's output, VERIFY at end |
+| **Parallel (A ∥ B)** | Load both, run independently, merge |
+| **Compose (A + B)** | Load both, use together on same task |
+
+CRITICAL: Execute one at a time. Pass context between steps.
+
+---
+
+## 10. LOGGING (OPT-IN)
+
+If the user has given explicit consent:
+Append a JSONL line to `~/.skill-router/log.jsonl` after each route:
+
+```jsonl
+{"ts":"2026-05-07T09:00:00","triage":"BUILD","prompt":"帮我写论文","matched":"paper-reading","score":0.92,"verify":"success"}
+```
+
+**Do NOT log without asking the user first.**
+When asked, explain: "This logs routing outcomes locally to measure accuracy.
+No data leaves your machine. Opt in?"
+
+---
+
+## 11. COMPLIANCE CHECKLIST
 
 | # | Check | Pass |
 |---|-------|------|
-| 1 | Did I pass through ENTRY GUARD? | ☐ |
-| 2 | Did I scan actual skill directories (not guess)? | ☐ |
+| 1 | Did I run TRIAGE (3 questions)? | ☐ |
+| 2 | Did I SCAN actual directories (not guess)? | ☐ |
 | 3 | Did I compare against ALL scanned skills? | ☐ |
-| 4 | Did I pass through LOAD GUARD before loading? | ☐ |
-| 5 | Did I run VERIFY HOOK after the skill finished? | ☐ |
-| 6 | Did I enter CONTROL HOOK after the conversation? | ☐ |
+| 4 | Did I pass LOAD GUARD before loading? | ☐ |
+| 5 | Did I prefix every output with `[skill-router]`? | ☐ |
+| 6 | Did I run VERIFY HOOK after the skill finished? | ☐ |
+| 7 | Did I enter CONTROL HOOK? | ☐ |
 
-**If any box is unchecked, you skipped a step. Fix it before responding.**
-
----
-
-## WHY THIS LIFECYCLE MATTERS
-
-| Skip this | Consequence |
-|-----------|-------------|
-| ENTRY GUARD | You route when user just wants a chat |
-| Phase 1 (SCAN) | You guess skills that don't exist |
-| Phase 2 (MATCH) | You pick the wrong skill |
-| LOAD GUARD | You load before user confirms |
-| VERIFY HOOK | Wrong skill keeps running silently |
-| CONTROL HOOK | Router is lost after one use |
+**If any box is unchecked, you skipped a step. Fix it.**
