@@ -1,6 +1,14 @@
 ---
 name: skill-router
 description: "CRITICAL: Route user intent to the best matching installed skill via dynamic cross-platform scan. ENTRY GUARD → SCAN → MATCH → LOAD GUARD → VERIFY HOOK → CONTROL HOOK lifecycle. Audit trail via [skill-router] prefix."
+description_zh: "跨平台自然语言路由技能。自动扫描 8+ 平台的已安装技能，通过 ENTRY GUARD → SCAN → MATCH → LOAD GUARD → VERIFY HOOK → CONTROL HOOK 生命周期将用户意图路由到最匹配的技能。纯 SKILL.md，零安装。"
+tags:
+  - routing
+  - skill-discovery
+  - cross-platform
+  - dynamic
+  - workflow
+version: 0.1.0
 triggers:
   - route
   - 路由
