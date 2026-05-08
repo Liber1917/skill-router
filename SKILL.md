@@ -1,14 +1,6 @@
 ---
 name: skill-router
-description: "CRITICAL: Route user intent to the best matching installed skill via dynamic cross-platform scan. ENTRY GUARD → SCAN → MATCH → LOAD GUARD → VERIFY HOOK → CONTROL HOOK lifecycle. Audit trail via [skill-router] prefix."
-description_zh: "跨平台自然语言路由技能。自动扫描 8+ 平台的已安装技能，通过 ENTRY GUARD → SCAN → MATCH → LOAD GUARD → VERIFY HOOK → CONTROL HOOK 生命周期将用户意图路由到最匹配的技能。纯 SKILL.md，零安装。"
-tags:
-  - routing
-  - skill-discovery
-  - cross-platform
-  - dynamic
-  - workflow
-version: 0.1.0
+description: "自动帮你在已安装的 200+ 技能中找到最合适的一个。说一句话，它替你挑 skill——写论文、查 GitHub、读文献、做 PPT，自动匹配。支持多技能串联/并行编排，找不到还能自动搜索 skills.sh 安装。所有路由行为带 [skill-router] 审计前缀。"
 triggers:
   - route
   - 路由
@@ -141,13 +133,37 @@ After the loaded skill finishes:
 
 ---
 
-## 7. CONTROL HOOK — PERSISTENT SESSION
+## 7. CONTROL HOOK — PERSISTENT SESSION WITH BOUNDARY GUARD
 
-After route + execution, the router stays active:
+After route + execution, the router stays active — but **does not re-route silently**.
+A BOUNDARY GUARD runs on each new user message:
 
-- **Same thread** → Stay in loaded skill. No re-route.
-- **New thread** → Re-enter ENTRY GUARD → SCAN → MATCH → GUARD.
-- **Uncertain** → Default to re-scan.
+```
+New message
+    │
+    ▼
+┌──────────────────────────────────────────┐
+│  BOUNDARY GUARD                          │
+│  Match msg ↔ current skill domain        │
+├──────────────────────────────────────────┤
+│  ≥0.85  → stay silent, pass thru         │
+│  <0.85  → is user asking for a skill?    │
+│    ├ YES (帮/找/推荐skill/which/路由) → ask│
+│    └ NO → stay silent, pass thru         │
+└──────────────────────────────────────────┘
+```
+
+**Critical: BOUNDARY GUARD is silent by default.** It only speaks when
+the user literally asks for routing help. This avoids wasting context
+turns on "do you need a skill?" noise in long-running sessions.
+
+**Rules**:
+- **≥0.85 (same thread)** → Stay silent. Pass through. Never mention routing.
+- **<0.85 + user asks for skill** ("帮我找 sdkill", "推荐 skill", "有XX技能吗", "which skill", "路由") → Ask once: `[skill-router] 需要我帮你找合适的 skill 吗？`
+  - Confirms → Enter SCAN → MATCH → LOAD GUARD.
+  - Declines → Pass through. This session's BOUNDARY GUARD is suppressed.
+- **<0.85 + user does NOT ask for skill** → Stay silent. Pass through. Do NOT ask.
+- **CRITICAL**: Do NOT re-route automatically. Do NOT ask unprompted. The BOUNDARY GUARD is a **listener with a hotkey**, not a greeter.
 
 ---
 
@@ -218,6 +234,6 @@ No data leaves your machine. Opt in?"
 | 4 | Did I pass LOAD GUARD before loading? | ☐ |
 | 5 | Did I prefix every output with `[skill-router]`? | ☐ |
 | 6 | Did I run VERIFY HOOK after the skill finished? | ☐ |
-| 7 | Did I enter CONTROL HOOK? | ☐ |
+| 7 | Did I run BOUNDARY GUARD before re-routing or staying silent? | ☐ |
 
 **If any box is unchecked, you skipped a step. Fix it.**
