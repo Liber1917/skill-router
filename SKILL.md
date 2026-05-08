@@ -86,6 +86,24 @@ and **triggers**.
 | **Low (<0.5)** | Multiple partial matches | Show all. Ask clarifying questions. |
 | **No match** | Nothing relevant | Go to network fallback. |
 
+### Cross-Domain Detection (run after scoring)
+
+Before presenting results, check for multi-intent signals:
+
+**Linguistic signals** (user expresses ≥2 intents):
+- Chinese: "又...又...", "既要...又要...", "和", "还有", "然后", "之后"
+- English: "and also", "plus", "then", "after that", "first...then"
+
+**Candidate signals** (matches span different domains):
+- ≥2 candidates with scores in [0.5, 0.85] range
+- OR ≥2 High candidates from different domains
+- Candidate `tags` have NO intersection → different domains
+
+**Decision**:
+- `cross_domain = true` → BOTH signal types present
+- `cross_domain = possible` → only linguistic signal detected
+- Record candidate list for Section 4
+
 **CRITICAL**: Do NOT invent skills. Do NOT guess. If not found → fallback.
 
 ---
@@ -98,6 +116,7 @@ After match, **do NOT load anything yet**. Pass through this guard:
 |-------|-------------|
 | **High** | Announce. Load immediately. |
 | **Medium** | Present options. User MUST pick. |
+| **Medium + cross_domain=true** | Present options + pipeline/compose suggestion (Section 9). |
 | **Low** | Ask clarifying. Re-match. |
 | **None** | Network fallback. |
 
@@ -199,13 +218,32 @@ Every route step **MUST** prefix with `[skill-router]`. Example:
 
 ## 9. MULTI-SKILL ROUTING
 
-| Pattern | Action |
-|---------|--------|
-| **Pipeline (A → B)** | Load A, run, load B with A's output, VERIFY at end |
-| **Parallel (A ∥ B)** | Load both, run independently, merge |
-| **Compose (A + B)** | Load both, use together on same task |
+**When to propose** (triggered from Section 4 when `cross_domain=true`):
 
-CRITICAL: Execute one at a time. Pass context between steps.
+Present user with a concise choice **in 1 round**:
+
+```
+[skill-router] 检测到多领域需求，请选择执行方式：
+  1. Pipeline（顺序执行）：A 完成后，将结果传给 B
+  2. Compose（组合执行）：A 和 B 同时使用，各自处理任务的不同部分
+  3. 单独执行某个技能（{list individual skills}）
+```
+
+**Patterns**:
+
+| Pattern | When to use | Execution |
+|---------|--------------|-------------|
+| **Pipeline (A → B)** | User says "先...再...", "然后", "step by step" | Load A → run → capture output → load B with output → VERIFY at end |
+| **Compose (A + B)** | User says "同时", "一起", domains are independent | Load both → run together → merge outputs → VERIFY |
+| **Parallel (A ∥ B)** | User wants independent results merged | Load both → run independently → merge → VERIFY |
+
+**Execution rules**:
+1. Execute ONE skill at a time (no parallel API calls)
+2. Pass context explicitly: "A 的输出是：{output}. 现在用 B 处理。"
+3. After all skills run → VERIFY HOOK with combined output
+4. If user picks "单独执行" → fall back to normal single-skill load
+
+**CRITICAL**: Never auto-execute multi-skill without user confirmation. Always present the plan first.
 
 ---
 
