@@ -18,6 +18,20 @@ triggers:
 
 **CRITICAL: This is a meta-skill. It does NOT do work itself. It routes.**
 
+**HUMAN-IN-THE-LOOP: Every routing decision requires user confirmation.**
+skill-router does NOT auto-execute anything. It proposes, user disposes.
+At every decision point — load a skill, run a pipeline, install from network —
+skill-router presents the plan and waits for explicit user approval.
+
+```
+User: "帮我写论文"
+  → skill-router: 检测到 paper-reading (0.92)，加载吗？
+  → User: 加载
+  → skill-router: 加载 paper-reading，开始工作
+  → skill-router: 完成，结果满意吗？
+  → User: 满意 / 不满意（重新路由）
+```
+
 **Every output line from this skill MUST be prefixed with `[skill-router]`.**
 This makes the audit trail grep-able across sessions.
 `grep '\[skill-router\]'` in any transcript to see what fired.
@@ -110,17 +124,21 @@ Before presenting results, check for multi-intent signals:
 
 ## 4. LOAD GUARD — VERIFY BEFORE LOADING
 
-After match, **do NOT load anything yet**. Pass through this guard:
+After match, **do NOT load anything yet**. Pass through this guard.
+**Every path requires user confirmation**.
 
 | Match | Guard action |
 |-------|-------------|
-| **High** | Announce. Load immediately. |
-| **Medium** | Present options. User MUST pick. |
+| **High** | Announce + ask once: `[skill-router] 匹配到 {skill} ({score})，加载这个 skill 吗？` |
+| **Medium** | Present options with scores. User MUST pick. |
 | **Medium + cross_domain=true** | Present options + pipeline/compose suggestion (Section 9). |
 | **Low** | Ask clarifying. Re-match. |
 | **None** | Network fallback. |
 
-If error: call VERIFY HOOK → failure path.
+**User declines high match** → Ask: "要不要试试其他候选？" or exit routing.
+If user says no to all: exit gracefully. `[skill-router] Control: no skill selected — user declined.`
+
+If error during loading: call VERIFY HOOK → failure path.
 
 ---
 
@@ -139,16 +157,21 @@ If `npx` not available → suggest skills.sh or GitHub.
 
 ## 6. VERIFY HOOK — CHECK EXECUTION RESULT
 
-After the loaded skill finishes:
+After the loaded skill finishes, **ask the user for feedback**:
 
-**Success**: Output matches user intent.
-→ `[skill-router] Verify: ✅ {skill} completed correctly`
-→ Move to CONTROL HOOK.
+`[skill-router] {skill} 执行完成。结果满意吗？`
+- User confirms (✅) → Move to CONTROL HOOK.
+- User rejects (❌ or "不行", "不对") → `[skill-router] Unloading {skill}. 重新匹配...`
+  → Return to SCAN for next candidate.
+  → If 2 consecutive failures: ask user to clarify their request.
 
-**Failure**: Output off-topic, wrong, or incomplete.
-→ `[skill-router] Verify: ❌ {skill} — result didn't match`
+**Success**: Skill ran without errors (user will decide relevance).
+**Failure**: Skill errored or produced empty output.
+→ `[skill-router] Verify: ❌ {skill} — execution error`
 → Unload. Return to SCAN for next candidate.
-→ If 2 consecutive failures: ask user for clarification.
+
+**CRITICAL**: The user, not the system, decides whether the result is acceptable.
+Do NOT skip the satisfaction check even if the skill "looks correct."
 
 ---
 
@@ -269,9 +292,10 @@ No data leaves your machine. Opt in?"
 | 1 | Did I pass ENTRY GUARD (route or chat)? | ☐ |
 | 2 | Did I SCAN actual directories (not guess)? | ☐ |
 | 3 | Did I compare against ALL scanned skills? | ☐ |
-| 4 | Did I pass LOAD GUARD before loading? | ☐ |
+| 4 | Did I ask user before loading (even high match)? | ☐ |
 | 5 | Did I prefix every output with `[skill-router]`? | ☐ |
-| 6 | Did I run VERIFY HOOK after the skill finished? | ☐ |
+| 6 | Did I ask user satisfaction after skill execution? | ☐ |
 | 7 | Did I run BOUNDARY GUARD before re-routing or staying silent? | ☐ |
+| 8 | Did I get user confirmation before any external action (install/network)? | ☐ |
 
 **If any box is unchecked, you skipped a step. Fix it.**
